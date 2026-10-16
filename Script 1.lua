@@ -32,7 +32,7 @@ local header = Drawing.new("Square")
 header.Size = Vector2.new(W, 3)
 header.Color = Color3.fromRGB(75, 125, 255)
 header.Filled = true
-header.Transparency = 0
+header.Transparency = 1
 header.Visible = false
 
 -- Dark gray divider
@@ -40,7 +40,7 @@ local divider = Drawing.new("Square")
 divider.Size = Vector2.new(W - 24, 1)
 divider.Color = Color3.fromRGB(55, 55, 55)
 divider.Filled = true
-divider.Transparency = 0
+divider.Transparency = 1
 divider.Visible = false
 
 -- White title
