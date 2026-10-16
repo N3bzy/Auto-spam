@@ -24,7 +24,7 @@ local bg = Drawing.new("Square")
 bg.Size = Vector2.new(W, H)
 bg.Color = Color3.fromRGB(15, 15, 15)
 bg.Filled = true
-bg.Transparency = 0
+bg.Transparency = 1
 bg.Visible = false
 
 -- Blue top accent
