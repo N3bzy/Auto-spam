@@ -1,23 +1,44 @@
-
-local HOLD_KEY   = 0x58 -- X
-local PARRY_KEY  = 0x46 -- F
-local TOGGLE_KEY = 0x70 -- F1
-local LMB        = 0x01
+local HOLD_KEY    = 0x58 -- X (parry spam)
+local PARRY_KEY   = 0x46 -- F
+local TOGGLE_KEY  = 0x70 -- F1 (show/hide GUI)
+local REBIND_KEY  = 0x71 -- F2 (change trigger keybind)
+local TRIGGER_KEY = 0x43 -- C (default trigger key, changeable in-game with F2)
+local LMB         = 0x01
 
 local INTERVAL = 0.005
 local BURST = 2
 
-local enabled = false
+local TRIGGER_COOLDOWN = 0.05 -- seconds between trigger parries while ball is on you
+
+local guiVisible = true
 local f1WasDown = false
+local f2WasDown = false
 local spamming = false
+local triggering = false
+local listening = false
 local dragging = false
 local dragOffX, dragOffY = 0, 0
 
 local posX, posY = 20, 300
-local W, H = 230, 112
+local W, H = 230, 128
 
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
+
+-- Key name lookup for the GUI
+local function keyName(k)
+    if k >= 0x41 and k <= 0x5A then return string.char(k) end
+    if k >= 0x30 and k <= 0x39 then return string.char(k) end
+    if k >= 0x70 and k <= 0x7B then return "F" .. (k - 0x6F) end
+    local names = {
+        [0x20] = "SPACE", [0x09] = "TAB", [0x10] = "SHIFT", [0x11] = "CTRL",
+        [0x12] = "ALT", [0x14] = "CAPS", [0x0D] = "ENTER", [0x08] = "BACK",
+        [0x05] = "MB4", [0x06] = "MB5",
+        [0xC0] = "TILDE", [0xBC] = ",", [0xBE] = ".", [0xBF] = "/",
+        [0xBA] = ";", [0xDE] = "'", [0xDB] = "[", [0xDD] = "]",
+    }
+    return names[k] or string.format("0x%02X", k)
+end
 
 -- Matte black background
 local bg = Drawing.new("Square")
@@ -90,6 +111,26 @@ cpsText.Color = Color3.fromRGB(100, 155, 255)
 cpsText.Outline = false
 cpsText.Visible = false
 
+-- Trigger status
+local trigText = Drawing.new("Text")
+trigText.Size = 11
+trigText.Color = Color3.fromRGB(155, 155, 155)
+trigText.Outline = false
+trigText.Visible = false
+
+local function refreshTrigText()
+    if listening then
+        trigText.Text = "PRESS A KEY...  (ESC cancel)"
+        trigText.Color = Color3.fromRGB(255, 200, 80)
+    elseif triggering then
+        trigText.Text = "TRIGGER  |  ARMED  [" .. keyName(TRIGGER_KEY) .. "]"
+        trigText.Color = Color3.fromRGB(100, 225, 145)
+    else
+        trigText.Text = "TRIGGER  |  HOLD " .. keyName(TRIGGER_KEY) .. "  (F2 rebind)"
+        trigText.Color = Color3.fromRGB(155, 155, 155)
+    end
+end
+
 local function layout()
     bg.Position = Vector2.new(posX, posY)
     header.Position = Vector2.new(posX, posY)
@@ -100,6 +141,7 @@ local function layout()
     status.Position = Vector2.new(posX + 27, posY + 60)
     cpsLabel.Position = Vector2.new(posX + 12, posY + 83)
     cpsText.Position = Vector2.new(posX + 130, posY + 78)
+    trigText.Position = Vector2.new(posX + 12, posY + 107)
 end
 
 local function setGui(v)
@@ -112,6 +154,7 @@ local function setGui(v)
     status.Visible = v
     cpsLabel.Visible = v
     cpsText.Visible = v
+    trigText.Visible = v
 end
 
 local function setSpamming(v)
@@ -131,8 +174,14 @@ local function setSpamming(v)
     end
 end
 
+local function setTriggering(v)
+    if triggering == v then return end
+    triggering = v
+    refreshTrigText()
+end
+
 local function updateDrag()
-    if not enabled or spamming or not isrbxactive() then
+    if not guiVisible or spamming or not isrbxactive() then
         dragging = false
         return
     end
@@ -158,7 +207,53 @@ local function updateDrag()
     end
 end
 
+-- ===== Triggerbot (always fires while the ball is on you) =====
+
+local lastFire = 0
+
+local function getBall()
+    local folder = workspace:FindFirstChild("Balls")
+    if not folder then return nil end
+
+    for _, b in ipairs(folder:GetChildren()) do
+        if b:GetAttribute("realBall") ~= false then
+            return b
+        end
+    end
+    return nil
+end
+
+-- true any time the ball is targeting you
+local function triggerCheck()
+    local ball = getBall()
+    if not ball then return false end
+    return ball:GetAttribute("target") == player.Name
+end
+
+-- Wait for the next key press and set it as the trigger key
+local function pollRebind()
+    if iskeypressed(0x1B) then -- ESC cancels
+        listening = false
+        refreshTrigText()
+        return
+    end
+
+    for k = 0x08, 0xFE do
+        if k ~= 0x01 and k ~= 0x02 and k ~= 0x04
+        and k ~= REBIND_KEY and k ~= TOGGLE_KEY and k ~= 0x1B then
+            if iskeypressed(k) then
+                TRIGGER_KEY = k
+                listening = false
+                refreshTrigText()
+                return
+            end
+        end
+    end
+end
+
+refreshTrigText()
 layout()
+setGui(guiVisible)
 
 -- Rolling one-second CPS counter
 local clickTimes = {}
@@ -168,19 +263,34 @@ local lastCpsUpdate = 0
 while true do
     local now = os.clock()
     local f1Down = iskeypressed(TOGGLE_KEY)
+    local f2Down = iskeypressed(REBIND_KEY)
 
+    -- F1 only shows/hides the GUI
     if f1Down and not f1WasDown then
-        enabled = not enabled
-        setGui(enabled)
-
-        if not enabled then
-            setSpamming(false)
+        guiVisible = not guiVisible
+        setGui(guiVisible)
+        if not guiVisible then
             dragging = false
         end
     end
     f1WasDown = f1Down
 
-    if enabled and isrbxactive() and iskeypressed(HOLD_KEY) then
+    -- F2 starts keybind listening
+    if f2Down and not f2WasDown and isrbxactive() then
+        listening = true
+        setTriggering(false)
+        refreshTrigText()
+    end
+    f2WasDown = f2Down
+
+    local active = isrbxactive()
+
+    if listening then
+        pollRebind()
+    end
+
+    -- Hold X: parry spam (works with GUI hidden)
+    if active and iskeypressed(HOLD_KEY) then
         setSpamming(true)
 
         if now >= nextBurst then
@@ -196,6 +306,20 @@ while true do
     else
         setSpamming(false)
         nextBurst = 0
+    end
+
+    -- Hold trigger key: parry every cooldown while the ball is on you
+    if active and not listening and iskeypressed(TRIGGER_KEY) then
+        setTriggering(true)
+
+        if now - lastFire >= TRIGGER_COOLDOWN and triggerCheck() then
+            keypress(PARRY_KEY)
+            keyrelease(PARRY_KEY)
+            clickTimes[#clickTimes + 1] = os.clock()
+            lastFire = now
+        end
+    else
+        setTriggering(false)
     end
 
     -- Remove clicks older than one second
