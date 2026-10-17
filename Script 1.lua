@@ -8,7 +8,7 @@ local LMB         = 0x01
 local INTERVAL = 0.005
 local BURST = 2
 
-local TRIGGER_COOLDOWN = 0.005 -- seconds between trigger parries while ball is on you
+local TRIGGER_COOLDOWN = 0.05 -- seconds between trigger parries while ball is on you
 
 local guiVisible = true
 local f1WasDown = false
