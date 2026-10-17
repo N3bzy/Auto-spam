@@ -8,7 +8,7 @@ local LMB         = 0x01
 local INTERVAL = 0.005
 local BURST = 2
 
-local TRIGGER_COOLDOWN = 0.1 -- seconds between trigger parries while ball is on you
+local TRIGGER_COOLDOWN = 0.1 -- minimum seconds between trigger parries
 
 local guiVisible = true
 local f1WasDown = false
@@ -207,9 +207,10 @@ local function updateDrag()
     end
 end
 
--- ===== Triggerbot (always fires while the ball is on you) =====
+-- ===== Triggerbot (exactly one parry per time the ball targets you) =====
 
 local lastFire = 0
+local armed = true -- false after a parry, true again only once the target leaves you
 
 local function getBall()
     local folder = workspace:FindFirstChild("Balls")
@@ -223,11 +224,15 @@ local function getBall()
     return nil
 end
 
--- true any time the ball is targeting you
-local function triggerCheck()
+-- Runs every loop. Returns true if the ball is on you.
+-- Re-arms the trigger whenever the ball is NOT on you.
+local function updateTarget()
     local ball = getBall()
-    if not ball then return false end
-    return ball:GetAttribute("target") == player.Name
+    if not ball or ball:GetAttribute("target") ~= player.Name then
+        armed = true
+        return false
+    end
+    return true
 end
 
 -- Wait for the next key press and set it as the trigger key
@@ -289,6 +294,9 @@ while true do
         pollRebind()
     end
 
+    -- Track whether the ball is on you (also re-arms the trigger)
+    local ballOnMe = updateTarget()
+
     -- Hold X: parry spam (works with GUI hidden)
     if active and iskeypressed(HOLD_KEY) then
         setSpamming(true)
@@ -308,15 +316,16 @@ while true do
         nextBurst = 0
     end
 
-    -- Hold trigger key: parry every cooldown while the ball is on you
+    -- Hold trigger key: one parry per targeting
     if active and not listening and iskeypressed(TRIGGER_KEY) then
         setTriggering(true)
 
-        if now - lastFire >= TRIGGER_COOLDOWN and triggerCheck() then
+        if armed and ballOnMe and now - lastFire >= TRIGGER_COOLDOWN then
             keypress(PARRY_KEY)
             keyrelease(PARRY_KEY)
             clickTimes[#clickTimes + 1] = os.clock()
             lastFire = now
+            armed = false
         end
     else
         setTriggering(false)
