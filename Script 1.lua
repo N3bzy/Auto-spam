@@ -2,6 +2,7 @@ local HOLD_KEY    = 0x58 -- X (parry spam)
 local PARRY_KEY   = 0x46 -- F
 local TOGGLE_KEY  = 0x70 -- F1 (show/hide GUI)
 local REBIND_KEY  = 0x71 -- F2 (change trigger keybind)
+local UNLOAD_KEY  = 0x72 -- F3 (unload script)
 local TRIGGER_KEY = 0x43 -- C (default trigger key, changeable in-game with F2)
 local LMB         = 0x01
 
@@ -10,9 +11,12 @@ local BURST = 2
 
 local TRIGGER_COOLDOWN = 0.1 -- minimum seconds between trigger parries
 
+local running = true
 local guiVisible = true
 local f1WasDown = false
 local f2WasDown = false
+local f3WasDown = false
+local lmbWasDown = false
 local spamming = false
 local triggering = false
 local listening = false
@@ -20,7 +24,9 @@ local dragging = false
 local dragOffX, dragOffY = 0, 0
 
 local posX, posY = 20, 300
-local W, H = 230, 128
+local W, H = 230, 160
+
+local BTN_H = 20
 
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
@@ -118,6 +124,26 @@ trigText.Color = Color3.fromRGB(155, 155, 155)
 trigText.Outline = false
 trigText.Visible = false
 
+-- Unload button
+local btn = Drawing.new("Square")
+btn.Size = Vector2.new(W - 24, BTN_H)
+btn.Color = Color3.fromRGB(150, 45, 45)
+btn.Filled = true
+btn.Transparency = 1
+btn.Visible = false
+
+local btnText = Drawing.new("Text")
+btnText.Text = "UNLOAD  [F3]"
+btnText.Size = 12
+btnText.Color = Color3.fromRGB(245, 245, 245)
+btnText.Outline = false
+btnText.Visible = false
+
+local allDrawings = {
+    bg, header, divider, title, subtitle, dot, status,
+    cpsLabel, cpsText, trigText, btn, btnText,
+}
+
 local function refreshTrigText()
     if listening then
         trigText.Text = "PRESS A KEY...  (ESC cancel)"
@@ -142,6 +168,8 @@ local function layout()
     cpsLabel.Position = Vector2.new(posX + 12, posY + 83)
     cpsText.Position = Vector2.new(posX + 130, posY + 78)
     trigText.Position = Vector2.new(posX + 12, posY + 107)
+    btn.Position = Vector2.new(posX + 12, posY + 130)
+    btnText.Position = Vector2.new(posX + 70, posY + 134)
 end
 
 local function setGui(v)
@@ -155,6 +183,8 @@ local function setGui(v)
     cpsLabel.Visible = v
     cpsText.Visible = v
     trigText.Visible = v
+    btn.Visible = v
+    btnText.Visible = v
 end
 
 local function setSpamming(v)
@@ -180,17 +210,33 @@ local function setTriggering(v)
     refreshTrigText()
 end
 
+local function unload()
+    running = false
+end
+
 local function updateDrag()
     if not guiVisible or spamming or not isrbxactive() then
         dragging = false
+        lmbWasDown = iskeypressed(LMB)
         return
     end
 
     local down = iskeypressed(LMB)
+    local justPressed = down and not lmbWasDown
+    lmbWasDown = down
     local mx, my = mouse.X, mouse.Y
 
     if down then
         if not dragging then
+            if justPressed then
+                -- Unload button click
+                if mx >= posX + 12 and mx <= posX + W - 12
+                and my >= posY + 130 and my <= posY + 130 + BTN_H then
+                    unload()
+                    return
+                end
+            end
+
             if mx >= posX and mx <= posX + W
             and my >= posY and my <= posY + H then
                 dragging = true
@@ -245,7 +291,7 @@ local function pollRebind()
 
     for k = 0x08, 0xFE do
         if k ~= 0x01 and k ~= 0x02 and k ~= 0x04
-        and k ~= REBIND_KEY and k ~= TOGGLE_KEY and k ~= 0x1B then
+        and k ~= REBIND_KEY and k ~= TOGGLE_KEY and k ~= UNLOAD_KEY and k ~= 0x1B then
             if iskeypressed(k) then
                 TRIGGER_KEY = k
                 listening = false
@@ -265,10 +311,11 @@ local clickTimes = {}
 local nextBurst = 0
 local lastCpsUpdate = 0
 
-while true do
+while running do
     local now = os.clock()
     local f1Down = iskeypressed(TOGGLE_KEY)
     local f2Down = iskeypressed(REBIND_KEY)
+    local f3Down = iskeypressed(UNLOAD_KEY)
 
     -- F1 only shows/hides the GUI
     if f1Down and not f1WasDown then
@@ -288,6 +335,12 @@ while true do
     end
     f2WasDown = f2Down
 
+    -- F3 unloads the script
+    if f3Down and not f3WasDown and isrbxactive() then
+        unload()
+    end
+    f3WasDown = f3Down
+
     local active = isrbxactive()
 
     if listening then
@@ -298,7 +351,7 @@ while true do
     local ballOnMe = updateTarget()
 
     -- Hold X: parry spam (works with GUI hidden)
-    if active and iskeypressed(HOLD_KEY) then
+    if running and active and iskeypressed(HOLD_KEY) then
         setSpamming(true)
 
         if now >= nextBurst then
@@ -317,7 +370,7 @@ while true do
     end
 
     -- Hold trigger key: one parry per targeting
-    if active and not listening and iskeypressed(TRIGGER_KEY) then
+    if running and active and not listening and iskeypressed(TRIGGER_KEY) then
         setTriggering(true)
 
         if armed and ballOnMe and now - lastFire >= TRIGGER_COOLDOWN then
@@ -346,4 +399,10 @@ while true do
 
     updateDrag()
     wait(0.01)
+end
+
+-- ===== Cleanup: remove everything from the screen =====
+for _, d in ipairs(allDrawings) do
+    d.Visible = false
+    pcall(function() d:Remove() end)
 end
