@@ -1,3 +1,11 @@
+local env = (getgenv and getgenv()) or _G
+
+-- Kill any leftover copy from a previous execution
+if env.__AUTOCLASH_UNLOAD then
+    pcall(env.__AUTOCLASH_UNLOAD)
+    wait(0.2)
+end
+
 local HOLD_KEY    = 0x58 -- X (parry spam)
 local PARRY_KEY   = 0x46 -- F
 local TOGGLE_KEY  = 0x70 -- F1 (show/hide GUI)
@@ -30,6 +38,15 @@ local BTN_H = 20
 
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
+
+-- Re-grab player/mouse so rejoining doesn't leave stale references
+local function refreshPlayer()
+    local lp = game.Players.LocalPlayer
+    if lp and (lp ~= player or not mouse) then
+        player = lp
+        mouse = player:GetMouse()
+    end
+end
 
 -- Key name lookup for the GUI
 local function keyName(k)
@@ -214,6 +231,9 @@ local function unload()
     running = false
 end
 
+-- Lets a future execution shut this copy down
+env.__AUTOCLASH_UNLOAD = unload
+
 local function updateDrag()
     if not guiVisible or spamming or not isrbxactive() then
         dragging = false
@@ -259,7 +279,7 @@ local lastFire = 0
 local armed = true -- false after a parry, true again only once the target leaves you
 
 local function getBall()
-    local folder = workspace:FindFirstChild("Balls")
+    local folder = game:GetService("Workspace"):FindFirstChild("Balls")
     if not folder then return nil end
 
     for _, b in ipairs(folder:GetChildren()) do
@@ -311,8 +331,12 @@ local clickTimes = {}
 local nextBurst = 0
 local lastCpsUpdate = 0
 
-while running do
+local function step()
     local now = os.clock()
+
+    -- Always use the current player/mouse (fixes rejoin)
+    refreshPlayer()
+
     local f1Down = iskeypressed(TOGGLE_KEY)
     local f2Down = iskeypressed(REBIND_KEY)
     local f3Down = iskeypressed(UNLOAD_KEY)
@@ -398,11 +422,27 @@ while running do
     end
 
     updateDrag()
+end
+
+while running do
+    local ok = pcall(step)
+    if not ok then
+        -- Don't unload on errors: just re-grab fresh refs and keep going
+        pcall(function()
+            player = game.Players.LocalPlayer
+            mouse = player:GetMouse()
+        end)
+        armed = true
+    end
     wait(0.01)
 end
 
 -- ===== Cleanup: remove everything from the screen =====
 for _, d in ipairs(allDrawings) do
-    d.Visible = false
+    pcall(function() d.Visible = false end)
     pcall(function() d:Remove() end)
+end
+
+if env.__AUTOCLASH_UNLOAD == unload then
+    env.__AUTOCLASH_UNLOAD = nil
 end
