@@ -434,7 +434,7 @@ while running do
         end)
         armed = true
     end
-    wait(0.01)
+    wait()
 end
 
 -- ===== Cleanup: remove everything from the screen =====
