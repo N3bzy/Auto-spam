@@ -56,7 +56,7 @@ local function keyName(k)
     local names = {
         [0x20] = "SPACE", [0x09] = "TAB", [0x10] = "SHIFT", [0x11] = "CTRL",
         [0x12] = "ALT", [0x14] = "CAPS", [0x0D] = "ENTER", [0x08] = "BACK",
-        [0x05] = "MB4", [0x06] = "MB5",
+        [0x02] = "RMB", [0x04] = "MMB", [0x05] = "MB4", [0x06] = "MB5",
         [0xC0] = "TILDE", [0xBC] = ",", [0xBE] = ".", [0xBF] = "/",
         [0xBA] = ";", [0xDE] = "'", [0xDB] = "[", [0xDD] = "]",
     }
@@ -301,7 +301,8 @@ local function updateTarget()
     return true
 end
 
--- Wait for the next key press and set it as the trigger key
+-- Wait for the next key/mouse button press and set it as the trigger key
+-- Mouse buttons: 0x02 RMB, 0x04 MMB, 0x05 MB4, 0x06 MB5 (LMB excluded so GUI clicks don't bind)
 local function pollRebind()
     if iskeypressed(0x1B) then -- ESC cancels
         listening = false
@@ -309,8 +310,8 @@ local function pollRebind()
         return
     end
 
-    for k = 0x08, 0xFE do
-        if k ~= 0x01 and k ~= 0x02 and k ~= 0x04
+    for k = 0x02, 0xFE do
+        if k ~= 0x01 and k ~= 0x03 and k ~= 0x07
         and k ~= REBIND_KEY and k ~= TOGGLE_KEY and k ~= UNLOAD_KEY and k ~= 0x1B then
             if iskeypressed(k) then
                 TRIGGER_KEY = k
