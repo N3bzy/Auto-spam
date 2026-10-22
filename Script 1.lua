@@ -11,7 +11,7 @@ local PARRY_KEY   = 0x46 -- F
 local TOGGLE_KEY  = 0x70 -- F1 (show/hide GUI)
 local REBIND_KEY  = 0x71 -- F2 (change trigger keybind)
 local UNLOAD_KEY  = 0x72 -- F3 (unload script)
-local TRIGGER_KEY = 0x43 -- C (default trigger key, changeable in-game with F2)
+local TRIGGER_KEY = 0x06 --  MB5 (default trigger key, changeable in-game with F2)
 local LMB         = 0x01
 
 local INTERVAL = 0.005
