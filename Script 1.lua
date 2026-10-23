@@ -274,33 +274,38 @@ local function updateDrag()
 end
 
 -- ===== Triggerbot (exactly one parry per time the ball targets you) =====
+-- ===== Triggerbot: real ball only, ignore dribbles =====
 
 local lastFire = 0
-local armed = true -- false after a parry, true again only once the target leaves you
+local armed = true
 
 local function getBall()
-    local folder = game:GetService("Workspace"):FindFirstChild("Balls")
+    local folder = workspace:FindFirstChild("Balls")
     if not folder then return nil end
 
     for _, b in ipairs(folder:GetChildren()) do
-        if b:GetAttribute("realBall") ~= false then
+        if b:GetAttribute("realBall") == true
+        and b:GetAttribute("DribbleActive") ~= true
+        and b:GetAttribute("target") == player.Name then
             return b
         end
     end
+
     return nil
 end
 
--- Runs every loop. Returns true if the ball is on you.
--- Re-arms the trigger whenever the ball is NOT on you.
+-- Only trigger for a real ball targeting you.
+-- Fakeouts and dribble states do not count.
 local function updateTarget()
     local ball = getBall()
-    if not ball or ball:GetAttribute("target") ~= player.Name then
+
+    if not ball then
         armed = true
         return false
     end
+
     return true
 end
-
 -- Wait for the next key/mouse button press and set it as the trigger key
 -- Mouse buttons: 0x02 RMB, 0x04 MMB, 0x05 MB4, 0x06 MB5 (LMB excluded so GUI clicks don't bind)
 local function pollRebind()
